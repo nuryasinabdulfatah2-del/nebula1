@@ -50,7 +50,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .badge-ic{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#FDEBD1;color:#C9762E;flex-shrink:0}
 .side small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
 .store{margin-top:10px;font-size:11.5px;color:var(--muted)}
-main{padding:36px clamp(16px,4vw,48px) 48px;min-width:0;outline:none}
+main{padding:58px clamp(16px,4vw,48px) 48px;min-width:0;outline:none}
 .wrap{max-width:980px;display:flex;flex-direction:column;gap:22px}
 h1{font-size:28px;line-height:1.2}
 .sub{color:var(--muted);margin:4px 0 0}
@@ -269,7 +269,7 @@ input[type=text].ck-title:focus{background:#fff}
   .pico{width:46px;height:46px;border-radius:14px}
   .phead .month{margin-left:0}
   .showside{display:none!important}
-  .app.collapsed main{padding-top:36px}
+  .app.collapsed main{padding-top:58px}
   .app.collapsed .side{display:flex}
   .app{grid-template-columns:1fr}
   .side{position:fixed;inset:auto 0 0 0;height:auto;z-index:20;flex-direction:row;padding:6px 8px;gap:2px;border-right:0;border-top:1px solid var(--line);background:var(--bg);justify-content:space-around}
@@ -302,6 +302,12 @@ input[type=text].ck-title:focus{background:#fff}
 .authlink{background:none;border:0;color:var(--accent);text-decoration:underline;cursor:pointer;padding:0;margin-top:10px;font-size:13px;display:block}
 .authmsg{min-height:18px;margin-top:10px;font-size:13px;color:var(--expense-ink)}
 .authmsg.ok{color:var(--good)}
+.authgoogle{display:flex;width:100%;align-items:center;justify-content:center;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font-weight:700;cursor:pointer;margin-top:12px}
+.authgoogle:hover{background:#FAFAF7}
+.authgoogle:disabled{opacity:.6;cursor:default}
+.author{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;margin:14px 0 2px}
+.author::before,.author::after{content:"";flex:1;height:1px;background:var(--line)}
+.authgoogle[hidden],.author[hidden]{display:none}
 </style>
 </head>
 <body>
@@ -316,6 +322,8 @@ input[type=text].ck-title:focus{background:#fff}
   <div class="authbox" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <h2 id="auth-title">Masuk ke NEBULA</h2>
     <p id="auth-sub">Simpan datamu di akun supaya ikut ke semua perangkat dan Fokus AI aktif.</p>
+    <button type="button" class="authgoogle" id="auth-google">Masuk dengan Google</button>
+    <div class="author" id="auth-or" aria-hidden="true">atau dengan email</div>
     <form id="authform" novalidate>
       <div id="auth-email-wrap"><label for="auth-email">Email</label><input id="auth-email" type="email" autocomplete="email" maxlength="200"></div>
       <label for="auth-pw" id="auth-pw-label">Kata sandi</label>
@@ -559,7 +567,7 @@ function openAuth(mode){
   const rec=authMode==='recovery';
   $a('auth-title').textContent=rec?'Buat kata sandi baru':'Masuk ke NEBULA';
   $a('auth-sub').textContent=rec?'Masukkan kata sandi baru untuk akunmu (minimal 8 karakter).':'Simpan datamu di akun supaya ikut ke semua perangkat dan Fokus AI aktif.';
-  $a('auth-email-wrap').hidden=rec; $a('auth-signup').hidden=rec; $a('auth-forgot').hidden=rec; $a('auth-close').hidden=rec;
+  $a('auth-google').hidden=rec; $a('auth-or').hidden=rec; $a('auth-email-wrap').hidden=rec; $a('auth-signup').hidden=rec; $a('auth-forgot').hidden=rec; $a('auth-close').hidden=rec;
   $a('auth-submit').textContent=rec?'Simpan kata sandi':'Masuk';
   $a('auth-pw').autocomplete=rec?'new-password':'current-password';
   $a('auth-pw').value=''; authMsg('');
@@ -570,13 +578,15 @@ function closeAuth(){ $a('authmodal').hidden=true; authMsg(''); }
 function authErr(e){
   const m=String((e&&e.message)||'');
   if(/invalid login/i.test(m)) return 'Email atau kata sandi salah.';
+  if(/already registered/i.test(m)) return 'Email ini sudah terdaftar. Coba masuk.';
+  if(/provider is not enabled|unsupported provider/i.test(m)) return 'Login Google belum diaktifkan di Supabase.';
   if(/not confirmed/i.test(m)) return 'Email belum dikonfirmasi. Cek kotak masukmu.';
   if(/rate limit|too many/i.test(m)) return 'Terlalu banyak percobaan. Coba lagi beberapa menit lagi.';
   if(/password/i.test(m)) return 'Kata sandi tidak memenuhi syarat (minimal 8 karakter).';
   return 'Gagal: '+(m||'coba lagi.');
 }
 const validEmail=v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-function authBusy(b){ ['auth-submit','auth-signup','auth-forgot'].forEach(i=>{ const el=$a(i); if(el) el.disabled=b; }); }
+function authBusy(b){ ['auth-submit','auth-signup','auth-forgot','auth-google'].forEach(i=>{ const el=$a(i); if(el) el.disabled=b; }); }
 const backUrl=()=>location.origin+location.pathname;
 
 document.addEventListener('click',async e=>{
@@ -588,6 +598,11 @@ document.addEventListener('click',async e=>{
     try{ if(ref){ clearTimeout(saveTimer); await flush(); } }catch(err){}
     await sb.auth.signOut();
     toast('Kamu sudah keluar.');
+  }
+  else if(t.id==='auth-google'&&sb){
+    authBusy(true); authMsg('');
+    try{ const r=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:backUrl()}}); if(r.error) throw r.error; }
+    catch(err){ authMsg(authErr(err)); authBusy(false); }
   }
   else if(t.id==='auth-signup'&&sb){
     const email=$a('auth-email').value.trim(), pw=$a('auth-pw').value;
@@ -611,6 +626,7 @@ document.addEventListener('click',async e=>{
     authBusy(false);
   }
 });
+window.addEventListener('pageshow',e=>{ if(e.persisted) authBusy(false); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$a('authmodal')&&!$a('authmodal').hidden&&authMode!=='recovery') closeAuth(); });
 $a('authform').addEventListener('submit',async e=>{
   e.preventDefault(); if(!sb) return;
@@ -833,7 +849,7 @@ function vFokusAI(){
   '<div class="chat" id="chatlog" aria-live="polite">'+chatHtml()+'</div>'+
   '<form class="chatbar" data-form="chat"><label for="chat-in" style="position:absolute;left:-9999px">Pesan</label><input type="text" id="chat-in" maxlength="400" autocomplete="off" placeholder="mis. baca 3 paper, bikin laporan praktikum, siapkan presentasi untuk minggu depan"><button class="btn" type="submit" aria-label="Kirim">'+ic('send',18)+'</button></form></div>';
 }
-function aiModeText(){ return ui.aiMode==='claude'?'Mode: dipecah oleh Claude.':ui.aiMode==='local'?(sb&&session?'Mode sederhana: AI sedang tidak tersedia, jadi pekerjaan dipecah dengan aturan kata sederhana (koma, "dan", baris baru).':'Mode sederhana: masuk ke akunmu untuk memakai AI. Sementara itu pekerjaan dipecah dengan aturan kata sederhana (koma, "dan", baris baru).'):'Checklist tetap bisa diisi manual lewat halaman Checklist meski AI tidak tersedia.'; }
+function aiModeText(){ const note=' Teks yang kamu ketik dikirim ke Google Gemini untuk dipecah, jadi jangan menulis data pribadi yang sensitif.'; return ui.aiMode==='ai'?'Mode: dipecah oleh AI (Google Gemini).'+note:ui.aiMode==='local'?(sb&&session?'Mode sederhana: AI sedang tidak tersedia, jadi pekerjaan dipecah dengan aturan kata sederhana (koma, "dan", baris baru).':'Mode sederhana: masuk ke akunmu untuk memakai AI. Sementara itu pekerjaan dipecah dengan aturan kata sederhana (koma, "dan", baris baru).'):'Checklist tetap bisa diisi manual lewat halaman Checklist meski AI tidak tersedia.'+(sb&&session?note:''); }
 function cleanProposal(arr){
   if(!Array.isArray(arr)) return null;
   const out=arr.filter(x=>x&&typeof x.title==='string'&&x.title.trim()).slice(0,8).map(x=>({
@@ -850,7 +866,7 @@ async function breakdown(text){
       if(tok){
         const r=await fetch('/.netlify/functions/breakdown',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({text:text,today:todayStr()})});
         if(r.status===429) toast('Batas penggunaan AI hari ini sudah habis. Pekerjaan dipecah dengan aturan sederhana.');
-        else if(r.ok){ const j=await r.json(); const p=cleanProposal(j&&j.tasks); if(p) return {tasks:p,mode:'claude'}; }
+        else if(r.ok){ const j=await r.json(); const p=cleanProposal(j&&j.tasks); if(p) return {tasks:p,mode:'ai'}; }
       }
     }catch(e){}
   }
@@ -1070,6 +1086,12 @@ document.getElementById('showside').innerHTML=ic('menu',22);
 try{ if(localStorage.getItem('focusos-side')==='1') document.querySelector('.app').classList.add('collapsed'); }catch(e){}
 render();
 initDb();
+(function(){
+  const m=(location.hash+'&'+location.search).match(/error_description=([^&]+)/);
+  if(!m) return;
+  let d=''; try{ d=decodeURIComponent(m[1].replace(/\+/g,' ')); }catch(e){}
+  setTimeout(()=>{ toast('Masuk gagal: '+(d||'coba lagi.')); try{ history.replaceState(null,'',location.pathname); }catch(e){} },800);
+})();
 })();
 </script>
 </body>
